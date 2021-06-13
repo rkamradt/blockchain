@@ -12,7 +12,14 @@ import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
 
-
+/**
+ * A Block in the block chain. Blocks have a hash calculated from the values in the
+ * block, a previous hash that is the prior block in the chain, a timestamp that
+ * gives the time of creation, a nonce that indicates how many iterations the block
+ * went through before proof of work was complete, and some data associated with the
+ * block. The first block in the block chain is the genesis block with a hash of "0"
+ * and a previous hash of "0". Block are created by mining.
+ */
 @Data
 @Builder
 @AllArgsConstructor

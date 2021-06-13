@@ -1,0 +1,31 @@
+package net.kamradtfamily.blockchain;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.*;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+
+@Slf4j
+@RestController
+@RequestMapping("/block")
+public class BlockController {
+    private static final ObjectMapper objectMapper = new ObjectMapper();
+    private final Blockchain blockchain;
+
+    public BlockController(Blockchain blockchain) {
+        this.blockchain = blockchain;
+    }
+
+    @GetMapping(path = "", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<Block> getBlocks() {
+        return blockchain.getAllBlocks();
+    }
+
+    @GetMapping(path = "{blockHash}", produces = MediaType.APPLICATION_JSON_VALUE)
+    public Mono<Block> getBlock(@PathVariable("blockHash") String blockHash) {
+        return blockchain.getBlockByHash(blockHash);
+    }
+
+}

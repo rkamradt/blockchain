@@ -9,6 +9,13 @@ import lombok.NoArgsConstructor;
 
 import java.util.List;
 
+/**
+ * A transaction is associated with the block in a block chain and represents a transfer
+ * of some unit of value. In our case the unit of value is just a string called a contract
+ * that users can exchange. Both Input and Output data have a contract that should be
+ * compliments, an address associated with the data, and the Input is signed by the
+ * private key of the initiating user.
+ */
 @lombok.Data
 @Builder
 @AllArgsConstructor
@@ -16,7 +23,7 @@ import java.util.List;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class Transaction {
     static ObjectMapper mapper = new ObjectMapper();
-    private long id;
+    private long transactionId;
     private String hash;
     public Data data;
 
@@ -26,7 +33,7 @@ public class Transaction {
     }
     public String toHash() {
         try {
-            return CryptoUtil.hash(id + mapper.writeValueAsString(this.data));
+            return CryptoUtil.hash(transactionId + mapper.writeValueAsString(this.data));
         } catch (JsonProcessingException e) {
             throw new RuntimeException("json error", e);
         }

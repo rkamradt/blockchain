@@ -1,163 +1,180 @@
 package net.kamradtfamily.blockchain;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.mongodb.client.model.Accumulators;
-import com.mongodb.client.model.Aggregates;
-import com.mongodb.client.model.BulkWriteOptions;
-import com.mongodb.client.model.DeleteOneModel;
-import com.mongodb.reactivestreams.client.MongoCollection;
-import com.mongodb.reactivestreams.client.MongoDatabase;
 import lombok.extern.slf4j.Slf4j;
-import org.bson.BsonDocument;
-import org.bson.BsonInt64;
-import org.bson.BsonString;
-import org.bson.Document;
+import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-import java.io.IOException;
-import java.time.Duration;
-import java.time.temporal.ChronoUnit;
-import java.util.Arrays;
-import java.util.stream.Collectors;
+import java.util.concurrent.atomic.AtomicLong;
 
+/**
+ * This class holds the methods associated with blocks and transaction
+ * including verifying correctness, and adding to the distributed ledger
+ */
 @Slf4j
+@Component
 public class Blockchain {
-    final static ObjectMapper mapper = new ObjectMapper();
     final Emitter emitter;
-    final MongoCollection<Document> blocks;
-    final MongoCollection<Document> transactions;
-    public Blockchain(MongoDatabase database, Emitter emitter) {
+    final BlockRepository blocks;
+    final TransactionRepository transactions;
+
+    /**
+     *
+     * Create a new Blockchain object. When first created, it will inspect the local
+     * database, create a genesis block if it is empty of blocks, or if it has blocks
+     * ensure that the transaction database does not have any transactions that are
+     * already associated with existing blocks.
+     *
+     * @param blocks The database of blocks
+     * @param transactionRepository The database of 'loose' transactions
+     * @param emitter An emitter of signals to ensure building consensus.
+     */
+    public Blockchain(BlockRepository blocks,
+                      TransactionRepository transactionRepository,
+                      Emitter emitter) {
         // Some places uses the emitter to act after some data is changed
-        this.blocks = database.getCollection("blocks");
-        this.transactions = database.getCollection("transactions");
+        this.blocks = blocks;
+        this.transactions = transactionRepository;
         this.emitter = emitter;
-        init();
-    }
-
-    public void init() {
-        Flux.from(blocks.find())
-                .map(this::mapToBlock)
-                .flatMap(b -> removeBlockTransactionsFromTransactions(b))
-                .switchIfEmpty(Mono.from(blocks.insertOne(mapBlockToDocument(Block.genesis)))
-                    .map(result -> Block.genesis))
-                .blockLast(Duration.of(10, ChronoUnit.SECONDS));
-    }
-
-    public Flux<Block> getAllBlocks() {
-        return Flux.from(blocks.find())
-                .map(this::mapToBlock);
-    }
-
-    private Document mapBlockToDocument(Block block) {
-        try {
-            return Document.parse(mapper.writeValueAsString(block));
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException("error parsing block to doc", e);
-        }
-    }
-
-    private Block mapToBlock(Document d) {
-        try {
-            return mapper.readValue(d.toJson(), Block.class);
-        } catch (IOException e) {
-            throw new RuntimeException("error parsing doc to block", e);
-        }
-    }
-
-    private Document mapTransactionToDocument(Transaction transaction) {
-        try {
-            return Document.parse(mapper.writeValueAsString(transaction));
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException("error parsing transaction to doc", e);
-        }
-    }
-
-    private Transaction mapToTransaction(Document d) {
-        try {
-            return mapper.readValue(d.toJson(), Transaction.class);
-        } catch (IOException e) {
-            throw new RuntimeException("error parsing doc to transaction", e);
-        }
-    }
-
-    public Mono<Block> getBlockByIndex(long index) {
-        BsonDocument bson = new BsonDocument();
-        bson.put("index", new BsonInt64(index));
-        return Mono.from(blocks.find(bson))
-                .map(this::mapToBlock);
-    }
-
-    public Mono<Block> getBlockByHash(String hash) {
-        BsonDocument bson = new BsonDocument();
-        bson.put("hash", new BsonString(hash));
-        return Mono.from(blocks.find(bson))
-                .map(this::mapToBlock);
-    }
-
-    public Mono<Block> getLastBlock() {
-        return Mono.from(blocks.aggregate(
-                    Arrays.asList(
-                            Aggregates.group("$index", Accumulators.max("maxindex", 0L))
-                    )
-                ))
-                .flatMap(r -> this.getBlockByIndex(r.get("maxindex", Long.class)))
-                .doOnNext(b -> log.info("last block is {}", b));
-    }
-
-    public long getDifficulty(long index) {
-        return 0L;
-    }
-
-    public Flux<Transaction> getAllTransactions() {
-        return Flux.from(transactions.find())
-                .map(this::mapToTransaction);
-    }
-
-    public Mono<Transaction> getTransactionById(long id) {
-        BsonDocument bson = new BsonDocument();
-        bson.put("id", new BsonInt64(id));
-        return Mono.from(blocks.find(bson))
-                .map(this::mapToTransaction);
+        blocks.findAll()
+                .flatMap(this::removeBlockTransactionsFromTransactions)
+                .switchIfEmpty(Mono.from(blocks.save(Block.genesis))
+                        .map(result -> Block.genesis))
+                .subscribe(b -> log.info("inspecting block {} on startup", b),
+                e -> log.error("error inspecting blocks on startup", e));
     }
 
     /**
      *
-     * Return a flux of blocks that contain the transaction
+     * Return all the blocks currently stored in the database
      *
-     * @param transactionId
+     * @return a Flux of Blocks
+     */
+    public Flux<Block> getAllBlocks() {
+        return blocks.findAll();
+    }
+
+    /**
+     *
+     * get a block by the hash value
+     *
+     * @param hash the hash value to search for
+     * @return A Mono of Block
+     */
+    public Mono<Block> getBlockByHash(String hash) {
+        return blocks.findByHash(hash);
+    }
+
+    /**
+     *
+     * Get the last block in the blockchain. Finds the max index and
+     * then returns that value.
+     *
+     * @return A Mono of Block
+     */
+    public Mono<Block> getLastBlock() {
+        // todo figure out a better way to get max from mongo
+        AtomicLong max = new AtomicLong(-1L);
+        return blocks.findAll()
+                .doOnNext(b -> max.getAndUpdate(i -> Math.max(i, b.getIndex())))
+                .last()
+                .flatMap(b -> blocks.findByIndex(max.get()));
+    }
+
+    /**
+     *
+     * Get the difficulty level. Always returns 0 because our
+     * transactions have no value and so mining should be easy
+     *
+     * @param index
+     * @return
+     */
+    public long getDifficulty(long index) {
+        return 0L;
+    }
+
+    /**
+     *
+     * Get all 'loose' transaction, that is transactions
+     * that have been created by the user, but are not part
+     * af a block. Loose transactions will eventually be
+     * put into a block by a mining operation
+     *
+     * @return A Flux of Transactions
+     */
+    public Flux<Transaction> getAllTransactions() {
+        return transactions.findAll();
+    }
+
+    /**
+     *
+     * Get a Transaction by id.
+     *
+     * @param id the id to look for
+     * @return A Mono of Transaction
+     */
+    public Mono<Transaction> getTransactionById(long id) {
+        return transactions.findByTransactionId(id);
+    }
+
+    /**
+     *
+     * Return a flux of blocks that contain the transaction. Used
+     * mainly to see if a transaction is already part of the block
+     * chain. Since a transaction should only exist once, there
+     * should ever only be 0 or 1 blocks returned
+     *
+     * @param transactionId the transaction id we're looking for
      * @return a flux of blocks that contain the transaction
      */
     public Flux<Block> findTransactionInChain(long transactionId, Flux<Block> referenceBlockchain) {
         return referenceBlockchain
             .filter(b -> b.getTransactions()
                 .stream()
-                .filter(t -> t.getId() == transactionId)
-                .findAny()
-                .isPresent()
+                .anyMatch(t -> t.getTransactionId() == transactionId)
             );
     }
 
+    /**
+     *
+     * Add a new block to the block chain. This happens as a result
+     * of a mining operation. The block is verified for correctness
+     * and all of the transactions contained are removed from the 'loose'
+     * transaction database.
+     *
+     * @param newBlock the block to add
+     * @param emit true to emit (set to false when replacing the block chain)
+     * @return A Mono of Block, which is always the newBlock, but can be used to chain async operations
+     */
     public Mono<Block> addBlock(Block newBlock, boolean emit) {
         log.info("adding block {}", newBlock);
         return getLastBlock()
                 .doOnNext(b -> log.info("in addBlock last block = {}", b))
                 .flatMap(l -> checkBlock(newBlock, l, getAllBlocks())
                                 .map(t -> newBlock))
-                .flatMap(ignore -> Mono.from(blocks.insertOne(mapBlockToDocument(newBlock))))
+                .flatMap(ignore -> blocks.save(newBlock))
                 .map(ignore -> newBlock)
-                .flatMap(b -> removeBlockTransactionsFromTransactions(b))
+                .flatMap(this::removeBlockTransactionsFromTransactions)
                 .doOnNext(b -> {
                     log.info("Block added: {}", newBlock);
                     if(emit) emitter.emit("blockAdded", b);
                 });
     }
 
-    public Mono<Transaction> addTransaction(Transaction newTransaction, boolean emit) throws TransactionAssertionError {
+    /**
+     *
+     * Add a loose transaction. The transaction is verified for correctness and
+     * that it doesn't already exist in our database. If it is good, the it will
+     * be stored for later inclusion in a block
+     *
+     * @param newTransaction the new transaction
+     * @param emit emit to build consensus
+     * @return a Mono of Transaction which is always the new transaction if it was added.
+     */
+    public Mono<Transaction> addTransaction(Transaction newTransaction, boolean emit) {
         return checkTransaction(newTransaction, getAllBlocks())
                 .map(b -> newTransaction)
-                .switchIfEmpty(Mono.from(transactions.insertOne(mapTransactionToDocument(newTransaction)))
+                .switchIfEmpty(Mono.from(transactions.save(newTransaction))
                         .map(ignore -> newTransaction)
                         .doOnNext(t -> {
                             log.info("Transaction added: {}", t);
@@ -165,18 +182,36 @@ public class Blockchain {
                         }));
     }
 
+    /**
+     *
+     * Remove transaction from the database of loose transactions
+     *
+     * @param newBlock the new block with the transaction to remove
+     * @return a Mono of Block which is always the newBlock
+     */
     public Mono<Block> removeBlockTransactionsFromTransactions(Block newBlock) {
         if(newBlock.getTransactions().isEmpty()) {
             return Mono.just(newBlock);
         }
-        return Mono.from(transactions
-                .bulkWrite(newBlock.getTransactions()
-                        .stream()
-                        .map(t -> new DeleteOneModel<Document>(new Document("id", t.getId())))
-                        .collect(Collectors.toList()),new BulkWriteOptions().bypassDocumentValidation(true)))
-                .map(ignore -> newBlock);
+        return Flux.fromStream(newBlock.getTransactions().stream())
+                .flatMap(t -> transactions.findByTransactionId(t.getTransactionId()))
+                .onErrorReturn(Transaction.builder().transactionId(0).build())
+                .filter(t -> t.getTransactionId() != 0)
+                .flatMap(t -> transactions.delete(t))
+                .map(ignore -> newBlock)
+                .switchIfEmpty(Flux.just(newBlock))
+                .last();
     }
 
+    /**
+     *
+     * The a block to be added for correctness.
+     *
+     * @param newBlock the block to add
+     * @param previousBlock the last block (always add to the end)
+     * @param referenceBlockchain The full blockchain
+     * @return A Mono of Block which is always newBlock
+     */
     public Mono<Block> checkBlock(Block newBlock, Block previousBlock, Flux<Block> referenceBlockchain) {
         log.info("checking block {}", newBlock);
         final String blockHash = newBlock.toHash();
@@ -208,9 +243,17 @@ public class Blockchain {
                 .map(ignore -> newBlock);
     }
 
+    /**
+     *
+     * Check a transaction for correctness
+     *
+     * @param transaction the transaction to check
+     * @param referenceBlockchain the block chain it will be part of
+     * @return A Mono of Transaction which is always the transaction
+     */
     public Mono<Transaction> checkTransaction(Transaction transaction, Flux<Block> referenceBlockchain) {
         transaction.check(transaction);
-        return this.findTransactionInChain(transaction.getId(), referenceBlockchain)
+        return this.findTransactionInChain(transaction.getTransactionId(), referenceBlockchain)
                 .map(ignore -> transaction)
                 .flatMap(ignore -> Flux.<Transaction>error(() ->
                         new TransactionAssertionError("block found with transaction")))

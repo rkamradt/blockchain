@@ -1,20 +1,24 @@
 package net.kamradtfamily.blockchain;
 
+import org.springframework.stereotype.Component;
+import reactor.core.publisher.Mono;
+
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
+@Component
 public class Miner {
     final Blockchain blocks;
     final Random random = new Random();
     public Miner(Blockchain blocks) {
         this.blocks = blocks;
     }
-    public Block mine(String address) {
+    public Mono<Block> mine(String address) {
         List<Transaction> transactions = new ArrayList<>();
         transactions.add(Transaction.builder()
-                .id(random.nextLong())
+                .transactionId(random.nextLong())
                 .data(Transaction.Data.builder()
                         .inputs(List.of(Transaction.Input.builder()
                                 .address(address)
@@ -28,14 +32,14 @@ public class Miner {
                         .build())
                 .build()
                 .withHash());
-        Block lastBlock = blocks.getLastBlock().block();
-        return Block.builder()
-                .transactions(transactions)
-                .nonce(0)
-                .previousHash(lastBlock.getHash())
-                .timestamp(Instant.now().getEpochSecond())
-                .index(lastBlock.getIndex() + 1)
-                .build()
-                .withHash();
+        return blocks.getLastBlock()
+                .map(b -> Block.builder()
+                        .transactions(transactions)
+                        .nonce(0)
+                        .previousHash(b.getHash())
+                        .timestamp(Instant.now().getEpochSecond())
+                        .index(b.getIndex() + 1)
+                        .build()
+                        .withHash());
     }
 }
