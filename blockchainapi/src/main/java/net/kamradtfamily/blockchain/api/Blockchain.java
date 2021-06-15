@@ -162,6 +162,7 @@ public class Blockchain {
                 .flatMap(b -> emit
                         ? emitter.send(TOPIC, Message.builder()
                                     .type("block")
+                                    .message("addedBlock")
                                     .block(b)
                                     .build())
                                 .map(ignore -> b)
@@ -188,6 +189,7 @@ public class Blockchain {
                         .flatMap(t1 -> emit
                                 ? emitter.send(TOPIC, Message.builder()
                                     .type("transaction")
+                                    .message("addedTransaction")
                                     .transaction(t1)
                                     .build())
                                     .map(ignore -> t1)

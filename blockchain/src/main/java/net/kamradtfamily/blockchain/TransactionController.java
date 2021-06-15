@@ -8,6 +8,7 @@ import net.kamradtfamily.blockchain.api.Transaction;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -33,7 +34,9 @@ public class TransactionController {
 
     @GetMapping(path = "{transactionId}", produces = MediaType.APPLICATION_JSON_VALUE)
     public Mono<Transaction> getTransaction(@PathVariable("transactionId") Long transactionId) {
-        return blockchain.getTransactionById(transactionId);
+        return blockchain.getTransactionById(transactionId)
+                .switchIfEmpty(Mono.error(new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Transaction Not Found")));
     }
     @PostMapping(path = "", produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseStatus(code = HttpStatus.CREATED, reason = "Transaction created")
@@ -41,11 +44,11 @@ public class TransactionController {
         return blockchain.addTransaction(Transaction.builder()
                 .transactionId(random.nextLong())
                 .data(Transaction.Data.builder()
-                        .inputs(List.of(Transaction.Input.builder()
+                        .input(Transaction.Input.builder()
                                 .address(transactionRequest.getInputAddress())
                                 .contract(transactionRequest.getInputContract())
                                 .signature(transactionRequest.getSignature())
-                                .build()))
+                                .build())
                         .outputs(List.of(Transaction.Output.builder()
                                 .address(transactionRequest.getOutputAddress())
                                 .contract(transactionRequest.getOutputContract())

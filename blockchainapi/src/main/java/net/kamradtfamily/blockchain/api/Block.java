@@ -33,7 +33,7 @@ public class Block {
     public static Block genesis = Block.builder()
             .index(0)
             .previousHash("0")
-            .timestamp(Instant.now().getEpochSecond())
+            .timestamp(0)
             .nonce(0)
             .transactions(Collections.emptyList())
             .build()

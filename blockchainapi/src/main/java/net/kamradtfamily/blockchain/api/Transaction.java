@@ -64,7 +64,7 @@ public class Transaction {
     @AllArgsConstructor
     @NoArgsConstructor
     public static class Data {
-        private List<Input> inputs;
+        private Input input;
         private List<Output> outputs;
     }
     @lombok.Data
