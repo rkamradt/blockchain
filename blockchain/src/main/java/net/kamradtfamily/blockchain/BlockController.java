@@ -37,12 +37,24 @@ public class BlockController {
         return blockchain.getLastBlock();
     }
 
+    @GetMapping(path = "blocks/transaction/{transactionId}", produces = MediaType.APPLICATION_JSON_VALUE)
+    public Mono<Block> getTransaction(@PathVariable("transactionId") Long transactionId) {
+        return blockchain.findTransactionInChain(transactionId, blockchain.getAllBlocks())
+                .last() // assume there's only one
+                .switchIfEmpty(Mono.error(new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Transaction Not Found in Blockchain")));
+
+    }
     @GetMapping(path = "{blockHash}", produces = MediaType.APPLICATION_JSON_VALUE)
     public Mono<Block> getBlock(@PathVariable("blockHash") String blockHash) {
         return blockchain.getBlockByHash(blockHash)
                 .switchIfEmpty(Mono.error(new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Block Not Found")));
 
+    }
+    @PutMapping(path = "/block/blocks/latest", produces =  MediaType.APPLICATION_JSON_VALUE)
+    public Mono<Block> checkReceivedBlock(@RequestBody Block receivedBlock) {
+        return blockchain.checkReceivedBlock(receivedBlock);
     }
     @PostMapping(path = "mine/{address}", produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseStatus(code = HttpStatus.CREATED, reason = "Block created")

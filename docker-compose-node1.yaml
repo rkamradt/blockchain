@@ -1,0 +1,52 @@
+version: '3.1'
+services:
+  mongo:
+    image: mongo
+    restart: always
+    ports:
+      - 27017
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+  mongo-express:
+    image: mongo-express
+    restart: always
+    ports:
+      - 8081:8081
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: root
+      ME_CONFIG_MONGODB_ADMINPASSWORD: example
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    ports:
+      - 2181
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    ports:
+      - 9092
+      - 29092
+    links:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+  blockchain:
+    image: rlkamradt/blockchain:1.0-SNAPSHOT
+    ports:
+      - 8080:8080
+    environment:
+      MONGO_HOST: mongo
+      SPRING_KAFKA_BOOTSTRAP-SERVERS: kafka:29092
+  blockchainnode:
+    image: rlkamradt/blockchainnode:1.0-SNAPSHOT
+    ports:
+      - 8082:8081
+    environment:
+      MONGO_HOST: mongo
+      SPRING_KAFKA_BOOTSTRAP-SERVERS: kafka:29092

@@ -23,16 +23,30 @@
  */
 package net.kamradtfamily.blockchain;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+import java.util.Properties;
 
 /**
  *
  * @author randalkamradt
  */
 @SpringBootApplication
+@Slf4j
 public class Application {
     public static void main(String [] args) {
+
         SpringApplication.run(Application.class, args);
+        try {
+            Properties gitProps = new Properties();
+            gitProps.load(Application.class.getResourceAsStream("/git.properties"));
+            log.info("Git Properties:");
+            gitProps.entrySet().stream()
+                    .forEach(es -> log.info("{}: {}", es.getKey(), es.getValue()));
+        } catch (Exception e) {
+            log.error("Error reading Git Properties");
+        }
     }
 }

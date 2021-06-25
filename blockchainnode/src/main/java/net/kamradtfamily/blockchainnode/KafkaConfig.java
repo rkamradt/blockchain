@@ -6,16 +6,27 @@ import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.core.reactive.ReactiveKafkaConsumerTemplate;
+import org.springframework.kafka.core.reactive.ReactiveKafkaProducerTemplate;
 import reactor.kafka.receiver.ReceiverOptions;
+import reactor.kafka.sender.SenderOptions;
 
 import java.util.Collections;
+import java.util.Map;
 
 @Configuration
-public class KafkaConsumerConfig {
+public class KafkaConfig {
+    public static final String TOPIC = "blockchain";
     @Bean
-    public ReceiverOptions<String, Message> kafkaReceiverOptions(@Value(value = "${FAKE_CONSUMER_DTO_TOPIC}") String topic, KafkaProperties kafkaProperties) {
+    public ReactiveKafkaProducerTemplate<String, Message> reactiveKafkaProducerTemplate(
+            KafkaProperties properties) {
+        Map<String, Object> props = properties.buildProducerProperties();
+        return new ReactiveKafkaProducerTemplate(SenderOptions.create(props));
+    }
+
+    @Bean
+    public ReceiverOptions<String, Message> kafkaReceiverOptions(KafkaProperties kafkaProperties) {
         ReceiverOptions<String, Message> basicReceiverOptions = ReceiverOptions.create(kafkaProperties.buildConsumerProperties());
-        return basicReceiverOptions.subscription(Collections.singletonList(topic));
+        return basicReceiverOptions.subscription(Collections.singletonList(TOPIC));
     }
 
     @Bean

@@ -14,26 +14,26 @@ import reactor.core.publisher.Mono;
 public class NodeController {
     private static final ObjectMapper objectMapper = new ObjectMapper();
     private final Blockchain blockchain;
-    private final Node node;
+    private final NodeService nodeService;
 
-    public NodeController(Blockchain blockchain, Node node) {
+    public NodeController(Blockchain blockchain, NodeService nodeService) {
         this.blockchain = blockchain;
-        this.node = node;
+        this.nodeService = nodeService;
     }
 
     @GetMapping(path = "peers", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     Flux<Node> getNodes() {
-        return Flux.just(node.getPeers().toArray(new Node[0]));
+        return nodeService.getPeers();
     }
 
     @PostMapping(path = "peers", produces = MediaType.APPLICATION_JSON_VALUE)
-    Mono<Node> addNode(Node node) {
-        return Mono.just(node); //node.connectToPeer(node);
+    Mono<Node> addNode(@RequestBody Node node) {
+        return nodeService.connectToPeer(node);
     }
 
-    @GetMapping(path = "transactions/:transactionId", produces = MediaType.ALL_VALUE)
+    @GetMapping(path = "transactions/:transactionId/confirmations", produces = MediaType.ALL_VALUE)
     Mono<String> getTransactionFromNode(@RequestParam("transactionId") String transactionId) {
-        return Mono.just(Boolean.TRUE) //node.getConfirmations(Long.valueOf(transactionId))
+        return nodeService.getConfirmations(Long.valueOf(transactionId))
                 .map(b -> b.toString());
     }
 }

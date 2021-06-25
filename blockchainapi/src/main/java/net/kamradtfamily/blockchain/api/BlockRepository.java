@@ -5,7 +5,7 @@ import org.springframework.stereotype.Repository;
 import reactor.core.publisher.Mono;
 
 @Repository
-public interface BlockRepository  extends ReactiveMongoRepository<Block, String> {
+public interface BlockRepository extends ReactiveMongoRepository<Block, String> {
     Mono<Block> findByIndex(Long index);
     Mono<Block> findByHash(String hash);
 }

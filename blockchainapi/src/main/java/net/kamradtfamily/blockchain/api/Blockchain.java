@@ -280,4 +280,26 @@ public class Blockchain {
                 .last();
     }
 
+    public Mono<Block> checkReceivedBlock(Block receivedBlock) {
+        return getLastBlock()
+                .filter(b -> b.getIndex() < receivedBlock.getIndex())
+                .flatMap(b -> {
+                    log.info("Blockchain possibly behind. We got: {}, Peer got: {}",
+                            b.getIndex(),
+                            receivedBlock.getIndex());
+                    if (b.getHash().equals(receivedBlock.getPreviousHash())) { // We can append the received block to our chain
+                        log.info("Appending received block to our chain");
+                        return addBlock(receivedBlock, true);
+                    } else {
+                        log.info("Querying chain from our peers");
+                        emitter.send(TOPIC, Message.builder()
+                                .type("empty")
+                                .message("getBlocks")
+                                .build())
+                                .subscribe();
+                        return Mono.empty();
+                    }
+                });
+
+    }
 }
