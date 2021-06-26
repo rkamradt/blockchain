@@ -165,7 +165,9 @@ public class Blockchain {
                                     .message("addedBlock")
                                     .block(b)
                                     .build())
-                                .map(ignore -> b)
+                        .doOnNext(sr -> log.info("sent message addedBlock send result {}", sr))
+                        .doOnError(ex -> log.error("error sending message addedBlock send result {}", ex))
+                        .map(ignore -> b)
                         : Mono.just(b))
                 .doOnNext(b -> {
                     log.info("Block added: {}", b);
@@ -192,7 +194,9 @@ public class Blockchain {
                                     .message("addedTransaction")
                                     .transaction(t1)
                                     .build())
-                                    .map(ignore -> t1)
+                                .doOnNext(sr -> log.info("sent message addedTransaction send result {}", sr))
+                                .doOnError(ex -> log.error("error sending message addedTransaction send result {}", ex))
+                                .map(ignore -> t1)
                                 : Mono.just(t1))
                         .doOnNext(t1 -> {
                             log.info("Transaction added: {}", t);
@@ -212,6 +216,7 @@ public class Blockchain {
         }
         return Flux.fromStream(newBlock.getTransactions().stream())
                 .flatMap(t -> transactions.findByTransactionId(t.getTransactionId()))
+                .doOnNext(t -> log.info("removing transaction {} from loose transactions", t))
                 .onErrorReturn(Transaction.builder().transactionId(0).build())
                 .filter(t -> t.getTransactionId() != 0)
                 .flatMap(t -> transactions.delete(t))
@@ -256,6 +261,7 @@ public class Blockchain {
         }
         return Flux.fromStream(newBlock.getTransactions().stream())
                 .flatMap(t -> checkTransaction(t, referenceBlockchain))
+                .switchIfEmpty(Flux.just(Transaction.builder().build()))
                 .last()
                 .map(ignore -> newBlock);
     }
@@ -296,7 +302,8 @@ public class Blockchain {
                                 .type("empty")
                                 .message("getBlocks")
                                 .build())
-                                .subscribe();
+                                .subscribe(sr -> log.info("sent message getBlocks send result {}", sr),
+                                    ex -> log.error("error sending message getBlocks send result {}", ex));
                         return Mono.empty();
                     }
                 });

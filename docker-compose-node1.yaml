@@ -39,14 +39,21 @@ services:
   blockchain:
     image: rlkamradt/blockchain:1.0-SNAPSHOT
     ports:
-      - 8080:8080
+      - 8080
     environment:
       MONGO_HOST: mongo
       SPRING_KAFKA_BOOTSTRAP-SERVERS: kafka:29092
   blockchainnode:
     image: rlkamradt/blockchainnode:1.0-SNAPSHOT
     ports:
-      - 8082:8081
+      - 8080
     environment:
       MONGO_HOST: mongo
       SPRING_KAFKA_BOOTSTRAP-SERVERS: kafka:29092
+  nginx:
+    image: nginx:latest
+    container_name: production_nginx
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+    ports:
+      - 8080:80

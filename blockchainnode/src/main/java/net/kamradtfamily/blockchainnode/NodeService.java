@@ -48,10 +48,8 @@ public class NodeService {
         myself = Node.builder()
                 .url("http://" + host + ":" + port)
                 .build();
-        connectToPeers(peers.findAll())
-                .last()
-                .subscribe(ignore -> emitter
-                    .receiveAutoAck()
+        connectToPeers(peers.findAll());
+        emitter.receiveAutoAck()
                     .doOnNext(consumerRecord -> log.info("received key={}, value={} from topic={}, offset={}",
                             consumerRecord.key(),
                             consumerRecord.value(),
@@ -61,26 +59,29 @@ public class NodeService {
                     .map(ConsumerRecord::value)
                     .flatMap(m -> messageHandler(m))
                     .subscribe(cr ->
-                            log.info("send message"),
-                            e -> log.error("error sending message", e)));
+                            log.info("message handled"),
+                            e -> log.error("error handling message", e));
     }
 
     public Mono<? extends Object> messageHandler(Message m) {
-        if("blockAdded".equals(m.getMessage())) {
+        if("addedBlock".equals(m.getMessage())) {
             return Mono.just(m.getBlock())
                     .flatMapMany(b ->
                         peers.findAll()
                                 .flatMap(p -> sendLatestBlock(p, b)))
+                    .switchIfEmpty(Mono.just(m.getBlock()))
                     .last();
-        } else if("transactionAdded".equals(m.getMessage())) {
+        } else if("addedTransaction".equals(m.getMessage())) {
             return Mono.just(m.getTransaction())
                     .flatMapMany(t ->
                             peers.findAll()
                                     .flatMap(p -> sendTransaction(p, t)))
+                    .switchIfEmpty(Mono.just(m.getTransaction()))
                     .last();
         } else if("getBlocks".equals(m.getMessage())) {
             return peers.findAll()
                     .flatMap(p -> getBlocks(p))
+                    .switchIfEmpty(blockchain.getLastBlock())
                     .last();
         } else {
             log.error("unknown message {}", m);
