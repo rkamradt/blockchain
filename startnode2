@@ -1,0 +1,6 @@
+docker compose -f docker-compose-node1.yaml up -d mongo
+docker compose -f docker-compose-node1.yaml up -d zookeeper
+docker compose -f docker-compose-node1.yaml up -d mongo-express
+docker compose -f docker-compose-node1.yaml up -d kafka
+docker compose -f docker-compose-node1.yaml up -d blockchain
+docker compose -f docker-compose-node1.yaml up blockchainnode
