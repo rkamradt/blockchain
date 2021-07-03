@@ -32,7 +32,7 @@ public class BlockController {
 
     }
 
-    @GetMapping(path = "last", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @GetMapping(path = "last", produces = MediaType.APPLICATION_JSON_VALUE)
     public Mono<Block> getLastBlocks() {
         return blockchain.getLastBlock();
     }
@@ -52,7 +52,7 @@ public class BlockController {
                         HttpStatus.NOT_FOUND, "Block Not Found")));
 
     }
-    @PutMapping(path = "/block/blocks/latest", produces =  MediaType.APPLICATION_JSON_VALUE)
+    @PutMapping(path = "/last", produces =  MediaType.APPLICATION_JSON_VALUE)
     public Mono<Block> checkReceivedBlock(@RequestBody Block receivedBlock) {
         return blockchain.checkReceivedBlock(receivedBlock);
     }

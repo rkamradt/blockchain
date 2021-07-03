@@ -28,25 +28,20 @@ import java.util.function.Function;
 @Slf4j
 public class NodeService {
     private static Node myself;
-    final private String host;
-    final private int port;
     final private NodeRepository peers;
     final private Blockchain blockchain;
     final private ReactiveKafkaConsumerTemplate<String, Message> emitter;
     final private WebClient client = WebClient.create();
 
-    public NodeService(@Value("${server.host}") String host,
-                       @Value("${server.port}") String port,
+    public NodeService(@Value("${server.myself}") String myselfUrl,
                        Blockchain blockchain,
                        NodeRepository peers,
                        ReactiveKafkaConsumerTemplate<String, Message> emitter) {
-        this.host = host;
-        this.port = Integer.parseInt(port);
         this.blockchain = blockchain;
         this.emitter = emitter;
         this.peers = peers;
         myself = Node.builder()
-                .url("http://" + host + ":" + port)
+                .url(myselfUrl)
                 .build();
         connectToPeers(peers.findAll());
         emitter.receiveAutoAck()
@@ -65,17 +60,13 @@ public class NodeService {
 
     public Mono<? extends Object> messageHandler(Message m) {
         if("addedBlock".equals(m.getMessage())) {
-            return Mono.just(m.getBlock())
-                    .flatMapMany(b ->
-                        peers.findAll()
-                                .flatMap(p -> sendLatestBlock(p, b)))
+            return peers.findAll()
+                    .flatMap(p -> sendLatestBlock(p, m.getBlock()))
                     .switchIfEmpty(Mono.just(m.getBlock()))
                     .last();
         } else if("addedTransaction".equals(m.getMessage())) {
-            return Mono.just(m.getTransaction())
-                    .flatMapMany(t ->
-                            peers.findAll()
-                                    .flatMap(p -> sendTransaction(p, t)))
+            return peers.findAll()
+                    .flatMap(p -> sendTransaction(p, m.getTransaction()))
                     .switchIfEmpty(Mono.just(m.getTransaction()))
                     .last();
         } else if("getBlocks".equals(m.getMessage())) {
@@ -89,94 +80,125 @@ public class NodeService {
         }
    }
 
-    public Mono<Node> connectToPeer(Node newPeer) {
-        return connectToPeers(Flux.just(newPeer))
-                .last()
-                .switchIfEmpty(Mono.just(myself));
-    }
-
     public Flux<Node> connectToPeers(Flux<Node> newPeers) {
-        return newPeers.flatMap((peer) ->
-            peers.findByUrl(peer.getUrl())
-                    .doOnNext(found -> log.info("peer {} already exists", found))
-                    .switchIfEmpty(sendAndInit(peer)));
+        return newPeers
+                .doOnNext(peer -> log.info("connecting to peer {} from {}", peer, myself))
+                .filter(peer -> !peer.getUrl().equals(myself.getUrl()))
+                .flatMap(peer ->
+                    peers.findByUrl(peer.getUrl())
+                         .doOnNext(found -> log.info("peer {} already exists", found))
+                         .switchIfEmpty(sendAndInit(peer)));
      }
 
     public Mono<Node> sendAndInit(Node peer) {
-        return sendPeer(peer, myself)
-                .map(ignore -> peer)
-                .flatMap(sent -> peers.save(sent))
-                .map(ignore -> peer)
-                .flatMapMany(saved -> initConnection(saved))
-                .last()
+        return peers.save(peer)
+                .doOnNext(n -> log.info("peer {} saved", n))
+                .flatMap(saved -> sendPeer(saved, myself))
+                .doOnNext(p -> log.info("connected to peer {}", p))
+                .flatMap(saved -> initConnection(saved))
                 .flatMapMany(ignore -> peers.findAll())
+                .filter(other -> !other.getUrl().equals(peer.getUrl()))
+                .doOnNext(other -> log.info("sending {} to {}", other, peer))
                 .doOnNext(other -> sendPeer(peer, other))
+                .switchIfEmpty(Mono.just(peer))
                 .last();
     }
 
-    public Flux<Transaction> initConnection(Node peer) {
+    public Mono<Node> initConnection(Node peer) {
         return getLatestBlock(peer)
-                .flatMapMany(block -> getTransactions(peer));
+                .doOnNext(p -> log.info("getting transactions from peer {}", p))
+                .flatMapMany(block -> getTransactions(peer))
+                .map(ignore -> peer)
+                .switchIfEmpty(Mono.just(peer))
+                .last();
     }
 
     public Mono<Node> sendPeer(Node peer, Node peerToSend) {
+        if(peer.getUrl().equals(myself.getUrl())) {
+            log.warn("avoiding post node request to self");
+            return Mono.just(peer);
+        }
         String URL = peer.getUrl() + "/node/peers";
-        log.info("Sending {} to peer {}.", peerToSend.getUrl(), URL);
+        log.info("Sending {} to peer {}.", peerToSend, URL);
         return client
                 .post()
                 .uri(URL)
-                .body(peerToSend, Node.class)
-                .retrieve().bodyToMono(Node.class);
+                .body(Mono.just(peerToSend), Node.class)
+                .exchange()
+                .doOnNext(cr -> log.info("response from peer {}", cr.rawStatusCode()))
+                .flatMap(cr -> cr.bodyToMono(Node.class))
+                .doOnNext(node -> log.info("sent {} to peer {}", node, URL))
+                .map(self -> peer);
 
     }
 
     public Mono<Block> getLatestBlock(Node peer) {
-        String URL = peer.getUrl() + "/blocks/latest";
+        if(peer.getUrl().equals(myself.getUrl())) {
+            log.warn("avoiding get latest block request to self");
+            return Mono.empty();
+        }
+        String URL = peer.getUrl() + "/block/last";
         log.info("Getting latest block from: {}", URL);
         return client
                 .get()
                 .uri(URL)
                 .exchange()
                 .flatMap(cr -> cr.bodyToMono(Block.class))
-                .flatMap(b -> checkReceivedBlock(b));
+                .flatMap(b -> checkReceivedBlock(b, peer));
     }
 
     public Mono<Block> getBlocks(Node peer) {
-        String URL = peer.getUrl() + "/block/blocks/latest";
+        if(peer.getUrl().equals(myself.getUrl())) {
+            log.warn("avoiding get blocks request to self");
+            return Mono.empty();
+        }
+        String URL = peer.getUrl() + "/block/last";
         log.info("Getting blocks from: {}", URL);
         return client
                 .get()
                 .uri(URL)
                 .exchange()
                 .flatMap(cr -> cr.bodyToMono(Block.class))
-                .flatMap(b -> checkReceivedBlock(b));
+                .flatMap(b -> checkReceivedBlock(b, peer));
 
     }
 
     public Mono<Block> sendLatestBlock(Node peer, Block block) {
-        String URL = peer.getUrl() + "/block/blocks/latest";
+        if(peer.getUrl().equals(myself.getUrl())) {
+            log.warn("avoiding put block request to self");
+            return Mono.empty();
+        }
+        String URL = peer.getUrl() + "/block/last";
         log.info("Posting latest block to: {}", URL);
         return client
                 .put()
                 .uri(URL)
-                .body(block, Block.class)
+                .body(Mono.just(block), Block.class)
                 .exchange()
                 .flatMap(cr -> cr.bodyToMono(Block.class));
     }
 
     public Mono<Transaction> sendTransaction(Node peer, Transaction transaction) {
-        String URL = peer.getUrl() + "/transaction";
+        if(peer.getUrl().equals(myself.getUrl())) {
+            log.warn("avoiding post transaction request to self");
+            return Mono.just(transaction);
+        }
+        String URL = peer.getUrl() + "/transaction/" + transaction.getId();
         log.info("Sending transaction '{}' to: {}", transaction, URL);
         return client
                 .post()
                 .uri(URL)
-                .body(transaction, Transaction.class)
+                .body(Mono.just(transaction), Transaction.class)
                 .exchange()
                 .flatMap(cr -> cr.bodyToMono(Transaction.class));
     }
 
     public Flux<Transaction> getTransactions(Node peer) {
-        String URL = peer.getUrl() + "/transactions";
+        if(peer.getUrl().equals(myself.getUrl())) {
+            log.warn("avoiding get transaction request to self");
+            return Flux.empty();
+        }
+        String URL = peer.getUrl() + "/transaction";
         log.info("Getting transactions from: {}", URL);
         return client
                 .get()
@@ -187,6 +209,10 @@ public class NodeService {
     }
 
     public Mono<Block> getConfirmation(Node peer, long transactionId) {
+        if(peer.getUrl().equals(myself.getUrl())) {
+            log.warn("avoiding confirmation request to self");
+            return blockchain.getLastBlock();
+        }
         String URL = peer.getUrl() + "/block/blocks/transactions/" + transactionId;
         log.info("Getting transactions from: {}", URL);
         return client
@@ -209,21 +235,25 @@ public class NodeService {
                 .switchIfEmpty(blockchain.addTransaction(transaction, true));
     }
 
-    private Mono<Block> checkReceivedBlock(Block block) {
-        return this.checkReceivedBlocks(Flux.just(block))
+    private Mono<Block> checkReceivedBlock(Block block, Node peer) {
+        return this.checkReceivedBlocks(Flux.just(block), peer)
                 .last();
     }
-    private Flux<Block> checkReceivedBlocks(Flux<Block> blocks) {
+    private Flux<Block> checkReceivedBlocks(Flux<Block> blocks, Node peer) {
         return blockchain.getLastBlock()
                 .flatMapMany(last -> blocks
-                        .filter(block -> block.getHash().equals("0")) // eat the genesis block
+                        .doOnNext(block -> log.info("checking last block {} against {}", last, block))
+                        .filter(block -> block.getPreviousHash().equals("0")) // eat the genesis block
                         .sort((b1, b2) -> b1.getIndex() - b2.getIndex() > 0 ? 1 :
                                 b1.getIndex() - b2.getIndex() == 0 ? 0 : -1)
-                        .takeUntil(br -> br.getIndex() >= last.getIndex()
-                                && br.getPreviousHash().equals(last.getHash())))
+                        .filter(block -> block.getIndex() > last.getIndex()
+                                && block.getPreviousHash().equals(last.getHash())))
+                .doOnNext(b -> log.info("adding block {} from peer {}", b, peer))
                 .flatMap(b -> blockchain.addBlock(b, true))
                 .switchIfEmpty(peers.findAll()
-                    .flatMap(p -> getBlocks(p)));
+                        .filter(p -> !p.getUrl().equals(peer.getUrl()))
+                        .flatMap(p -> getBlocks(p)))
+                .switchIfEmpty(blockchain.getLastBlock());
     }
 
     public Flux<Node> getPeers() {

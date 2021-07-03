@@ -185,22 +185,23 @@ public class Blockchain {
      * @return a Mono of Transaction which is always the new transaction if it was added.
      */
     public Mono<Transaction> addTransaction(Transaction newTransaction, boolean emit) {
-        return checkTransaction(newTransaction, getAllBlocks()).map(b -> newTransaction)
-                .flatMap(t -> Mono.from(transactions.save(newTransaction))
-                        .map(ignore -> newTransaction)
-                        .flatMap(t1 -> emit
+        return checkTransaction(newTransaction, getAllBlocks())
+                .map(b -> newTransaction)
+                .flatMap(t -> transactions.findByTransactionId(t.getTransactionId()))
+                .doOnNext(t -> log.info("transaction is already present"))
+                .switchIfEmpty(transactions.save(newTransaction)
+                        .doOnNext(t -> log.info("saved transaction {}", t))
+                        .flatMap(t -> emit
                                 ? emitter.send(TOPIC, Message.builder()
                                     .type("transaction")
                                     .message("addedTransaction")
-                                    .transaction(t1)
+                                    .transaction(t)
                                     .build())
                                 .doOnNext(sr -> log.info("sent message addedTransaction send result {}", sr))
                                 .doOnError(ex -> log.error("error sending message addedTransaction send result {}", ex))
-                                .map(ignore -> t1)
-                                : Mono.just(t1))
-                        .doOnNext(t1 -> {
-                            log.info("Transaction added: {}", t);
-                        }));
+                                .map(ignore -> t)
+                                : Mono.just(t))
+                        .doOnNext(t1 -> log.info("Transaction added: {}", t1)));
     }
 
     /**

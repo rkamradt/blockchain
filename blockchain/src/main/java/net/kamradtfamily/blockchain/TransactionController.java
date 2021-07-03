@@ -59,4 +59,11 @@ public class TransactionController {
 
     }
 
+    @PostMapping(path = "{transactionId}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @ResponseStatus(code = HttpStatus.CREATED, reason = "Transaction added")
+    Mono<Transaction> addTransaction(@RequestBody Transaction transaction) {
+        return blockchain.addTransaction(transaction, false);
+
+    }
+
 }

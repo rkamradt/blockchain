@@ -28,7 +28,9 @@ public class NodeController {
 
     @PostMapping(path = "peers", produces = MediaType.APPLICATION_JSON_VALUE)
     Mono<Node> addNode(@RequestBody Node node) {
-        return nodeService.connectToPeer(node);
+        return nodeService.connectToPeers(Flux.just(node))
+                .switchIfEmpty(Mono.just(node))
+                .last();
     }
 
     @GetMapping(path = "transactions/:transactionId/confirmations", produces = MediaType.ALL_VALUE)

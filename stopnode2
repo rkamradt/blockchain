@@ -1,1 +1,1 @@
-docker compose -p node1 -f docker-compose-node1.yaml down
+docker compose -p node2 -f docker-compose-node2.yaml down
