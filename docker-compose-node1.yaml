@@ -44,6 +44,12 @@ services:
       SERVER_MYSELF: http://192.168.0.174:8080
       MONGO_HOST: mongo
       SPRING_KAFKA_BOOTSTRAP-SERVERS: kafka:29092
+  blockchainminer:
+    image: rlkamradt/blockchainminer:1.0-SNAPSHOT
+    ports:
+      - 8080
+    environment:
+      MONGO_HOST: mongo
   nginx:
     image: nginx:latest
     volumes:

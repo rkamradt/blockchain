@@ -12,4 +12,7 @@ import lombok.NoArgsConstructor;
 public class User {
     String id;
     String name;
+    String address;
+    String publicKey;
+    String privateKey;
 }

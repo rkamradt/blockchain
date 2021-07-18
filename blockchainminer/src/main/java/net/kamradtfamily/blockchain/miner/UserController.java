@@ -8,7 +8,9 @@ import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
+import java.util.List;
 
 @Slf4j
 @RestController
@@ -26,7 +28,8 @@ public class UserController {
     public Flux<User> getUsers(
             @RequestHeader("Authorization") String authorization) {
         checkForUser("admin", authorization);
-        return userService.getAllUsers();
+        return userService.getAllUsers()
+                .doOnNext(u -> u.setPrivateKey(null));
     }
 
     @GetMapping(path = "{userId}",
@@ -39,17 +42,38 @@ public class UserController {
                         HttpStatus.NOT_FOUND, "User Not Found")))
                 .doOnNext(u -> checkForUser(u.getName(), authorization))
                 .onErrorResume((e) -> Mono.error(() -> new ResponseStatusException(
-                        HttpStatus.FORBIDDEN, "Unauthorized")));
+                        HttpStatus.FORBIDDEN, "Unauthorized")))
+                .doOnNext(u -> u.setPrivateKey(null));
     }
     @PostMapping(path = "",
             produces = MediaType.APPLICATION_JSON_VALUE)
-    @ResponseStatus(code = HttpStatus.CREATED, reason = "Transaction created")
-    Mono<User> addTransaction(@RequestBody AddUserRequest addUserRequest) {
-        return userService.getUser(addUserRequest.getName())
+    @ResponseStatus(code = HttpStatus.CREATED, reason = "User created")
+    Mono<User> addUser(@RequestBody AddUserRequest addUserRequest) throws NoSuchAlgorithmException {
+        return userService.getUserByName(addUserRequest.getName())
                 .flatMap(u -> Mono.<User>error(() -> new ResponseStatusException(
                         HttpStatus.BAD_REQUEST, "User already exists")
                  ))
-                .switchIfEmpty(userService.addUser(addUserRequest.getName()));
+                .switchIfEmpty(userService.addUser(addUserRequest.getName()))
+                .doOnNext(u -> u.setPrivateKey(null));
+    }
+
+    @PostMapping(path = "transaction/{userId}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @ResponseStatus(code = HttpStatus.CREATED, reason = "Transaction created")
+    Mono<Long> addTransaction(@RequestHeader("Authorization") String authorization,
+                                     @PathVariable("userId") String userId,
+                                     @RequestBody TransactionRequest transactionRequest) {
+        return userService.getUser(userId)
+                .switchIfEmpty(Mono.error(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "User Not Found")))
+                .doOnNext(u -> checkForUser(u.getName(), authorization))
+                .onErrorResume((e) -> Mono.error(() -> new ResponseStatusException(
+                        HttpStatus.FORBIDDEN, "Unauthorized")))
+                .flatMap(user -> userService.addTransaction(
+                        user,
+                        transactionRequest.getInputContract(),
+                        transactionRequest.getOutputContract(),
+                        transactionRequest.getOutputAddress()));
+
     }
 
     private void checkForUser(String userName, String authorization) {

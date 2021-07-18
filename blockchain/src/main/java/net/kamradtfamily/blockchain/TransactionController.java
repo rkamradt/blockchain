@@ -38,26 +38,6 @@ public class TransactionController {
                 .switchIfEmpty(Mono.error(new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Transaction Not Found")));
     }
-    @PostMapping(path = "", produces = MediaType.APPLICATION_JSON_VALUE)
-    @ResponseStatus(code = HttpStatus.CREATED, reason = "Transaction created")
-    Mono<Transaction> addTransaction(@RequestBody TransactionRequest transactionRequest) {
-        return blockchain.addTransaction(Transaction.builder()
-                .transactionId(random.nextLong())
-                .data(Transaction.Data.builder()
-                        .input(Transaction.Input.builder()
-                                .address(transactionRequest.getInputAddress())
-                                .contract(transactionRequest.getInputContract())
-                                .signature(transactionRequest.getSignature())
-                                .build())
-                        .outputs(List.of(Transaction.Output.builder()
-                                .address(transactionRequest.getOutputAddress())
-                                .contract(transactionRequest.getOutputContract())
-                                .build()))
-                        .build())
-                .build()
-                .withHash(), true);
-
-    }
 
     @PostMapping(path = "{transactionId}", produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseStatus(code = HttpStatus.CREATED, reason = "Transaction added")

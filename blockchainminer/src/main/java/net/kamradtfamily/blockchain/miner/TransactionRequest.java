@@ -1,4 +1,4 @@
-package net.kamradtfamily.blockchain;
+package net.kamradtfamily.blockchain.miner;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -11,8 +11,6 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class TransactionRequest {
     String inputContract;
-    String inputAddress;
     String outputContract;
     String outputAddress;
-    String signature;
 }
