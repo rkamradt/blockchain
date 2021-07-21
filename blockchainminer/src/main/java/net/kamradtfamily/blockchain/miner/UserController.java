@@ -60,8 +60,8 @@ public class UserController {
     @PostMapping(path = "transaction/{userId}", produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseStatus(code = HttpStatus.CREATED, reason = "Transaction created")
     Mono<Long> addTransaction(@RequestHeader("Authorization") String authorization,
-                                     @PathVariable("userId") String userId,
-                                     @RequestBody TransactionRequest transactionRequest) {
+                              @PathVariable("userId") String userId,
+                              @RequestBody TransactionRequest transactionRequest) {
         return userService.getUser(userId)
                 .switchIfEmpty(Mono.error(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "User Not Found")))
@@ -73,6 +73,22 @@ public class UserController {
                         transactionRequest.getInputContract(),
                         transactionRequest.getOutputContract(),
                         transactionRequest.getOutputAddress()));
+
+    }
+
+    @PostMapping(path = "mine/{userId}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @ResponseStatus(code = HttpStatus.CREATED, reason = "Transaction created")
+    Mono<String> createBlock(@RequestHeader("Authorization") String authorization,
+                              @PathVariable("userId") String userId,
+                              @RequestBody TransactionRequest transactionRequest) {
+        return userService.getUser(userId)
+                .switchIfEmpty(Mono.error(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "User Not Found")))
+                .doOnNext(u -> checkForUser(u.getName(), authorization))
+                .onErrorResume((e) -> Mono.error(() -> new ResponseStatusException(
+                        HttpStatus.FORBIDDEN, "Unauthorized")))
+                .flatMap(user -> userService.createBlock(
+                        user));
 
     }
 

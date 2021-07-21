@@ -20,13 +20,16 @@ public class UserService {
     final private UserRepository userRepository;
     final private WebClient client = WebClient.create();
     final private String transactionUrl;
+    final private String miningUrl;
     final Random random = new Random();
 
 
     public UserService(@Value("${transaction.url}") String transactionUrl,
+                       @Value("${mining.url}") String miningUrl,
                        UserRepository userRepository) {
         this.userRepository = userRepository;
         this.transactionUrl = transactionUrl;
+        this.miningUrl = miningUrl;
         userRepository.findByName("admin")
                 .switchIfEmpty(userRepository.save(User.builder()
                         .name("admin")
@@ -100,5 +103,15 @@ public class UserService {
                 .doOnNext(t -> log.info("transaction {} added", t))
                 .map(t -> t.getTransactionId());
 
+    }
+
+    public Mono<String> createBlock(User user) {
+        return client
+                .post()
+                .uri(miningUrl + "/" + user.getAddress())
+                .exchange()
+                .flatMap(cr -> cr.bodyToMono(Block.class))
+                .doOnNext(block -> log.info("block {} added", block))
+                .map(Block::getHash);
     }
 }
