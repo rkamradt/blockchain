@@ -33,7 +33,7 @@ spec:
               name: mongo-mongodb
               key: mongodb-root-password
         - name: SERVER_MYSELF
-          value: http://blockchainminer:8080
+          value: http://blockchainnode:8080
         - name: SPRING_KAFKA_BOOTSTRAP-SERVERS
           value: kafka:9092
         image: rlkamradt/blockchainnode:1.0-SNAPSHOT
