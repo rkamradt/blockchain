@@ -1,0 +1,40 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-node1
+  annotations:
+    # use the shared ingress-nginx
+    kubernetes.io/ingress.class: "nginx"
+spec:
+  rules:
+    - host: node1
+      http:
+        paths:
+          - path: /node
+            pathType: Prefix
+            backend:
+              service:
+                name: blockchainnode
+                port:
+                  number: 8080
+          - path: /user
+            pathType: Prefix
+            backend:
+              service:
+                name: blockchainminer
+                port:
+                  number: 8080
+          - path: /block
+            pathType: Prefix
+            backend:
+              service:
+                name: blockchain
+                port:
+                  number: 8080
+          - path: /transaction
+            pathType: Prefix
+            backend:
+              service:
+                name: blockchain
+                port:
+                  number: 8080
